@@ -1,0 +1,318 @@
+
+<!doctype html>
+<html lang="tr">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width,initial-scale=1" />
+  <title>H5P Sunum — Koyu Çerçeve + Belirgin Havai Fişek</title>
+
+  <!-- H5P Standalone -->
+  <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/h5p-standalone@3.8.0/dist/styles/h5p.css">
+
+  <style>
+    :root{
+      --bg:#060918;
+      --frame1:#0b0f26;
+      --frame2:#0f173c;
+      --line: rgba(255,255,255,.14);
+      --shadow: 0 28px 110px rgba(0,0,0,.58);
+      --innerShadow: inset 0 0 0 1px rgba(0,0,0,.25);
+    }
+    *{ box-sizing:border-box; }
+    body{
+      margin:0;
+      background:
+        radial-gradient(1100px 650px at 25% 10%, rgba(108,93,211,.20), transparent 55%),
+        radial-gradient(1000px 700px at 75% 85%, rgba(255,222,89,.14), transparent 55%),
+        radial-gradient(800px 550px at 85% 20%, rgba(72,209,204,.10), transparent 60%),
+        var(--bg);
+      overflow:hidden;
+      font-family: system-ui,-apple-system,Segoe UI,Roboto,Arial,sans-serif;
+    }
+
+    /* SADE: sadece çerçeve + içerik */
+    .wrap{
+      position:relative;
+      z-index:2;
+      width:100vw;
+      height:100vh;
+      display:grid;
+      place-items:center;
+      padding: 18px;
+    }
+
+    .frame{
+      width:min(1120px, 96vw);
+      height:min(720px, 92vh);
+      border-radius: 26px;
+      background: linear-gradient(180deg, var(--frame1), var(--frame2));
+      border: 1px solid var(--line);
+      box-shadow: var(--shadow);
+      padding: 14px;
+      position:relative;
+      overflow:hidden;
+    }
+
+    /* Parıltı şeridi (çok hafif) */
+    .frame::before{
+      content:"";
+      position:absolute; inset:-2px;
+      background: radial-gradient(600px 240px at 20% 0%, rgba(255,255,255,.08), transparent 60%),
+                  radial-gradient(600px 240px at 85% 0%, rgba(255,222,89,.06), transparent 60%);
+      pointer-events:none;
+      opacity:.65;
+    }
+
+    .inner{
+      width:100%;
+      height:100%;
+      border-radius: 20px;
+      overflow:hidden;
+      background: rgba(255,255,255,.04);
+      border: 1px solid rgba(255,255,255,.10);
+      box-shadow: var(--innerShadow);
+    }
+
+    #h5p-container{
+      width:100%;
+      height:100%;
+      background: rgba(255,255,255,.06);
+    }
+
+    /* Efekt canvas (tıklamayı engellemesin) */
+    #fx{
+      position:fixed;
+      inset:0;
+      z-index:1;
+      pointer-events:none;
+    }
+
+    /* Mini “flash” efekti (patlama anında) */
+    .flash{
+      position:fixed; inset:0; z-index:1; pointer-events:none;
+      background: radial-gradient(circle at var(--x) var(--y), rgba(255,255,255,.35), transparent 35%);
+      opacity:0;
+      transition: opacity 120ms ease;
+    }
+    .flash.on{ opacity:1; }
+
+    @media (max-width: 820px){
+      .frame{ height:min(760px, 94vh); padding:12px; border-radius:22px; }
+      .inner{ border-radius:16px; }
+    }
+  </style>
+</head>
+
+<body>
+  <canvas id="fx"></canvas>
+  <div class="flash" id="flash"></div>
+
+  <div class="wrap">
+    <div class="frame">
+      <div class="inner">
+        <div id="h5p-container"></div>
+      </div>
+    </div>
+  </div>
+
+  <!-- H5P Standalone JS -->
+  <script src="https://cdn.jsdelivr.net/npm/h5p-standalone@3.8.0/dist/main.bundle.js" charset="UTF-8"></script>
+
+  <script>
+    // =========================
+    // 1) BELİRGİN HAVAİ FİŞEK SİSTEMİ
+    // =========================
+    const canvas = document.getElementById("fx");
+    const ctx = canvas.getContext("2d");
+    const flash = document.getElementById("flash");
+
+    let W=0, H=0, DPR=1;
+
+    function resize(){
+      DPR = Math.min(2, window.devicePixelRatio || 1);
+      W = Math.floor(window.innerWidth);
+      H = Math.floor(window.innerHeight);
+      canvas.width = Math.floor(W * DPR);
+      canvas.height = Math.floor(H * DPR);
+      canvas.style.width = W + "px";
+      canvas.style.height = H + "px";
+      ctx.setTransform(DPR,0,0,DPR,0,0);
+    }
+    window.addEventListener("resize", resize);
+    resize();
+
+    const particles = [];
+    function rand(a,b){ return a + Math.random()*(b-a); }
+    function pick(arr){ return arr[(Math.random()*arr.length)|0]; }
+
+    // Daha “görünür” renkler (parlak)
+    const colors = [
+      [255,222,89],   // sarı
+      [108,93,211],   // mor
+      [72,209,204],   // turkuaz
+      [255,90,140],   // pembe
+      [255,255,255]   // beyaz
+    ];
+
+    function screenFlash(x,y){
+      flash.style.setProperty("--x", x + "px");
+      flash.style.setProperty("--y", y + "px");
+      flash.classList.add("on");
+      clearTimeout(screenFlash._t);
+      screenFlash._t = setTimeout(()=> flash.classList.remove("on"), 140);
+    }
+
+    function burst(x,y, intensity=1){
+      // patlamayı daha yoğun yap
+      const count = Math.floor(rand(90,130) * intensity);
+      const base = pick(colors);
+      for(let i=0;i<count;i++){
+        const ang = rand(0, Math.PI*2);
+        const sp = rand(2.6, 8.4) * intensity;
+        const col = (Math.random() < 0.18) ? pick(colors) : base; // araya farklı renk serpiştir
+        particles.push({
+          x, y,
+          vx: Math.cos(ang)*sp,
+          vy: Math.sin(ang)*sp,
+          g: rand(0.035, 0.080),
+          drag: rand(0.985, 0.992),
+          life: rand(55, 95) * intensity,
+          maxLife: 95 * intensity,
+          r: rand(1.6, 3.2) * intensity,
+          col,
+          glow: rand(0.18, 0.42) // “parlama”
+        });
+      }
+      screenFlash(x,y);
+    }
+
+    function bloomDot(x,y,r, rgb, a){
+      // parıltı (outer glow)
+      ctx.beginPath();
+      ctx.fillStyle = `rgba(${rgb[0]},${rgb[1]},${rgb[2]},${a})`;
+      ctx.arc(x, y, r, 0, Math.PI*2);
+      ctx.fill();
+    }
+
+    function tick(){
+      // iz bırakma: belirgin ama temiz
+      ctx.fillStyle = "rgba(6,9,24,0.20)";
+      ctx.fillRect(0,0,W,H);
+
+      // additive glow benzeri his için aynı parçacığı 2 kez çiziyoruz
+      for(let i=particles.length-1;i>=0;i--){
+        const p = particles[i];
+        p.vx *= p.drag;
+        p.vy *= p.drag;
+        p.vy += p.g;
+        p.x += p.vx;
+        p.y += p.vy;
+
+        p.life -= 1;
+        const a = Math.max(0, p.life / p.maxLife);
+
+        // glow
+        bloomDot(p.x, p.y, p.r*2.4, p.col, a * p.glow);
+
+        // core
+        bloomDot(p.x, p.y, p.r, p.col, a * 0.95);
+
+        if(p.life <= 0 || p.y > H + 60 || p.x < -60 || p.x > W + 60){
+          particles.splice(i,1);
+        }
+      }
+
+      requestAnimationFrame(tick);
+    }
+    tick();
+
+    // Mini ve Final efektleri
+    function miniFirework(){
+      const x = rand(W*0.22, W*0.78);
+      const y = rand(H*0.18, H*0.62);
+      burst(x,y, 0.85);
+    }
+    function bigFinal(){
+      let n = 0;
+      const iv = setInterval(()=>{
+        const x = rand(W*0.18, W*0.82);
+        const y = rand(H*0.14, H*0.55);
+        burst(x,y, 1.35);
+        n++;
+        if(n >= 12) clearInterval(iv);
+      }, 150);
+    }
+
+    // =========================
+    // 2) H5P INIT (Sadece sunum + çerçeve)
+    // =========================
+    async function initH5P(){
+      if(!window.H5PStandalone){
+        // burada UI yok dediğin için sadece console
+        console.error("H5PStandalone yok. main.bundle.js yüklenmemiş olabilir.");
+        return;
+      }
+
+      const options = {
+        h5pJsonPath: "h5p_content",
+        frameJs:  "https://cdn.jsdelivr.net/npm/h5p-standalone@3.8.0/dist/frame.bundle.js",
+        frameCss: "https://cdn.jsdelivr.net/npm/h5p-standalone@3.8.0/dist/styles/h5p.css",
+        frame: true,
+        fullScreen: true,
+        icon: false
+      };
+
+      try{
+        const el = document.getElementById("h5p-container");
+        const maybePromise = new H5PStandalone.H5P(el, options);
+        if(maybePromise && typeof maybePromise.then === "function") await maybePromise;
+
+        attachXAPI();
+      }catch(err){
+        console.error(err);
+      }
+    }
+
+    function attachXAPI(){
+      if(!window.H5P || !H5P.externalDispatcher) return;
+
+      H5P.externalDispatcher.on("xAPI", (event) => {
+        const st = event?.data?.statement;
+        const verb = st?.verb?.id || "";
+        const result = st?.result || {};
+
+        // Doğru cevap -> belirgin mini havai fişek
+        if(verb.includes("answered") && result.success === true){
+          miniFirework();
+        }
+
+        // Tamamlama -> büyük final
+        if(verb.includes("completed")){
+          bigFinal();
+        }
+      });
+    }
+
+    // Ek: Kullanıcı tıklarsa da küçük patlama (daha dikkat çekici olur, ama tıklamayı engellemez)
+    document.addEventListener("pointerdown", (e) => {
+      // çok sık patlamasın
+      const now = performance.now();
+      if(document._lastBurst && now - document._lastBurst < 220) return;
+      document._lastBurst = now;
+
+      // tıklanan yere minik patlama (düşük yoğunluk)
+      burst(e.clientX, e.clientY, 0.55);
+    }, { passive:true });
+
+    // İsteğe bağlı: F ile tam ekran
+    document.addEventListener("keydown", (e) => {
+      if(e.key.toLowerCase() === "f"){
+        if(!document.fullscreenElement) document.documentElement.requestFullscreen?.();
+        else document.exitFullscreen?.();
+      }
+    });
+
+    document.addEventListener("DOMContentLoaded", initH5P);
+  </script>
+</body>
+</html>

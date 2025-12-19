@@ -1,0 +1,89 @@
+<!doctype html>
+<html lang="tr">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+
+  <!-- Prod için @latest yerine sürüm sabitle -->
+  <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/h5p-standalone@3.8.0/dist/styles/h5p.css">
+
+  <style>
+    body { margin: 0; font-family: system-ui, Arial; background: #0b7def; }
+    .shell { max-width: 1100px; margin: 24px auto; padding: 16px; }
+    #h5p-container { border-radius: 16px; overflow: hidden; background: rgba(255,255,255,0.06); }
+    #loading { color: #d80d0d; opacity: .8; padding: 10px 2px; }
+  </style>
+</head>
+
+<body>
+  <div class="shell">
+    <div id="loading">Yükleniyor…</div>
+    <div id="h5p-container"></div>
+  </div>
+
+  <script src="https://cdn.jsdelivr.net/npm/h5p-standalone@3.8.0/dist/main.bundle.js" charset="UTF-8"></script>
+
+  <script>
+    document.addEventListener('DOMContentLoaded', () => {
+      const CONTENT_ID = "my-course-presentation-01"; // her içerik için benzersiz olsun
+      const LS_KEY = "h5p_userData_" + CONTENT_ID;
+
+      const savedUserData = (() => {
+        try { return JSON.parse(localStorage.getItem(LS_KEY) || "null"); }
+        catch { return null; }
+      })();
+
+      const options = {
+        id: CONTENT_ID,
+        h5pJsonPath: "h5p_content",
+        frameJs: "https://cdn.jsdelivr.net/npm/h5p-standalone@3.8.0/dist/frame.bundle.js",
+        frameCss: "https://cdn.jsdelivr.net/npm/h5p-standalone@3.8.0/dist/styles/h5p.css",
+
+        frame: true,
+        fullScreen: true,
+        icon: false,
+
+        // Kaldığın yerden devam (manual)
+        saveFreq: 60, // saniye
+        contentUserData: savedUserData || undefined,
+
+        // İstersen H5P iframe’ine tema enjekte et:
+        // customCss: ["./h5p-theme.css"],
+
+        // Denklem gerekiyorsa:
+        // customJs: ["https://cdn.jsdelivr.net/npm/mathjax@3/es5/tex-mml-chtml.js"],
+      };
+
+      const el = document.getElementById("h5p-container");
+      const loading = document.getElementById("loading");
+
+      new H5PStandalone.H5P(el, options).then(() => {
+        loading.remove();
+
+        // xAPI event yakala (analitik / puan / completion)
+        H5P.externalDispatcher.on("xAPI", (event) => {
+          // console.log("xAPI:", event);
+
+          // Örn: kendi endpoint’ine gönder
+          // fetch("/api/xapi", {
+          //   method: "POST",
+          //   headers: { "Content-Type": "application/json" },
+          //   body: JSON.stringify(event.data.statement)
+          // });
+        });
+
+        // State kaydet (localStorage)
+        setInterval(() => {
+          const cidKey = "cid-" + CONTENT_ID;
+          const userData = window.H5PIntegration?.contents?.[cidKey]?.contentUserData;
+          if (userData) localStorage.setItem(LS_KEY, JSON.stringify(userData));
+        }, options.saveFreq * 1000);
+
+      }).catch((err) => {
+        loading.textContent = "İçerik yüklenemedi (console'u kontrol edin).";
+        console.error(err);
+      });
+    });
+  </script>
+</body>
+</html>
